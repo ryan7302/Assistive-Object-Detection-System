@@ -38,7 +38,7 @@ sudo apt update
 sudo apt install python3-venv python3-pip python3-smbus i2c-tools ffmpeg espeak portaudio19-dev libatlas-base-dev -y
 ```
 
-## ======================= Earbud Connection Setup =======================
+## Earbud Connection Setup
 
 1. Open Bluetooth from the Raspberry Pi GUI and pair your Bluetooth Earbuds.
 2. Set the earbud as the default speaker and microphone:
