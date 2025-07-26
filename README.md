@@ -1,5 +1,5 @@
 # Assistive-Object-Detection-System
-real-time assistive system for Raspberry Pi with object detection, IMU tracking, and voice control, plus PC visualization and CPU monitoring.
+Voice-Controlled real-time assistive system for Raspberry Pi with object detection, IMU tracking, and voice control, plus PC visualization and CPU monitoring.
 
 This project is a real-time assistive system built for the Raspberry Pi with PC-based visualization of IMU. It integrates:
 
