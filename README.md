@@ -1,12 +1,12 @@
 # Assistive-Object-Detection-System
 Voice-Controlled real-time assistive system for Raspberry Pi with object detection, IMU tracking, and voice control, plus PC visualization and CPU monitoring.
 
-This project is a real-time assistive system built for the Raspberry Pi with PC-based visualization of IMU. It integrates:
+This project is a real-time assistive system) with 6-thread concurrent processing pipeline on a Raspberry Pi 5, utilizing mutex locks and priority queues to decouple YOLOv11 ONNX inference, IMU sensor fusion, and asynchronous audio I/O.
 
 - Object Detection using YOLOv8 ONNX model
-- IMU-based camera motion tracking
+- IMU-based camera motion tracking, sensor fusion algorithem
 - Voice control using Vosk
-- Real-time 3D orientation visualization on PC
+- Real-time 3D orientation visualization
 - CPU monitoring and post-run usage analysis
 
 ---
