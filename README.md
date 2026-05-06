@@ -43,23 +43,28 @@ The result: a person with visual impairment can ask *“What’s in front of me?
 
 ## Hardware Architecture
 
-                 +-------------------------------------------+
-                 |              Raspberry Pi 5               |
-                 |                                           |
- USB Camera  --->| USB 3.0                                   |
-                 |                                           |
- 9‑Axis IMU  --->| I²C (SDA/SCL on GPIO2/GPIO3)  +3.3V      |
-                 |                                           |
- USB Speaker --->| USB / 3.5mm Audio Jack                    |
-                 |                                           |
- USB Mic     --->| USB / I²S MEMS mic (optional)             |
-                 +------------------+------------------------+
-                                    |
-                              Ethernet / Wi‑Fi
-                                    |
-                    +---------------+----------------+
-                    | PC running 3D Visualiser (UDP) |
-                    +--------------------------------+
+```mermaid
+flowchart TD
+    subgraph Person["👤 User (wearable)"]
+        direction TB
+        Camera["Head‑mounted camera<br/>(USB cable down to Pi)"]
+        IMU["9‑axis IMU<br/>(on headband)"]
+        Earbuds["Bluetooth earbuds<br/>(mic + speaker in ear)"]
+    end
+
+    subgraph Pi["🧠 Raspberry Pi 5<br/>(belt / pocket)"]
+        Processing["Processing unit"]
+    end
+
+    subgraph Debug["🖥️ Development PC"]
+        Visualiser["3D Visualiser<br/>(UDP)"]
+    end
+
+    Camera -- "USB 3.0 (wired)" --> Processing
+    IMU -- "I²C (wired)" --> Processing
+    Earbuds -- "Bluetooth 5.0 (wireless)" --> Processing
+    Processing -- "Wi‑Fi (UDP)" --> Visualiser
+```
 
 **Bill of Materials (typical configuration):**
 
@@ -68,8 +73,7 @@ The result: a person with visual impairment can ask *“What’s in front of me?
 | Raspberry Pi 5 (4/8 GB) | – | Main processing unit |
 | USB Camera (e.g. Logitech C270) | USB 3.0 | 640×480 @ 30 fps |
 | 9‑axis IMU (BNO055 / MPU9250) | I²C | Accel, gyro, mag; used with Madgwick filter |
-| USB Speaker / Headphones | USB / 3.5 mm | For TTS output |
-| USB Microphone | USB | For Vosk voice commands |
+| Bluetooth Earbuds | Bluetooth | For Combined microphone + speaker for voice & TTS |
 | Portable 5V power bank | USB‑C PD | 15 W+ recommended for stable operation |
 
 **Wiring detail (IMU):**
@@ -85,33 +89,23 @@ All other peripherals are plug‑and‑play over USB, keeping the wearable simpl
 ## Software Architecture
 
 The system is a **multi‑threaded real‑time pipeline** with controlled shared memory, designed for concurrency on a quad‑core Cortex‑A76.
-                    +-----------+
-                    |  Camera   |
-                    +-----+-----+
-                          | (Frame queue, mutex)
-          +---------------+---------------+
-          |                               |
-+---------v---------+          +----------v---------+
-| Detection Thread  |          | IMU Thread         |
-| (YOLOv8 ONNX)     |          | (Madgwick + ZUPT)  |
-| -> bounding boxes |          | -> orientation      |
-+---------+---------+          +----------+---------+
-          |                               |
-          +------+------+    +------------+-----------+
-                 |           |                        |
-          +------v------+ +--v-----------+  +---------v---------+
-          | SORT Tracker| | Voice Thread |  | Description Logic |
-          | (IOU match) | | (Vosk ASR)   |  | & Scene Composer  |
-          +------+------+ +------+-------+  +---------+---------+
-                 |                 |                     |
-                 +-------+  +------+                    |
-                         |  |                           |
-                    +----v--v----+                      |
-                    |  Priority  |<---------------------+
-                    |  Queue +   |
-                    |  TTS Thread|
-                    | (pyttsx3)  |
-                    +------------+
+
+```mermaid
+flowchart TD
+    Camera[Camera] -->|Frame queue, mutex| DetectionThread[Detection Thread<br/>YOLOv8 ONNX]
+    Camera --> IMUThread[IMU Thread<br/>Madgwick + ZUPT]
+    Camera --> VoiceThread[Voice Thread<br/>Vosk ASR]
+    
+    DetectionThread --> SORT[SORT Tracker<br/>IOU match]
+    IMUThread --> Orientation[Orientation<br/>yaw/pitch/roll]
+    
+    SORT --> Desc[Description Logic<br/>& Scene Composer]
+    Orientation --> Desc
+    VoiceThread --> Desc
+    
+    Desc --> PQ[Priority Queue]
+    PQ --> TTS[TTS Thread<br/>pyttsx3]
+```
 
 All threads synchronised with `threading.Lock` and priority knobs for real‑time control of frame‑skipping under heavy load.
 
