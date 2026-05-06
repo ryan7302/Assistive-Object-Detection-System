@@ -272,7 +272,7 @@ All benchmarks were recorded under realistic conditions with a moving user, not 
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+It is a privte personal project
 
 ---
 
