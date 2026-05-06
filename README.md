@@ -42,24 +42,24 @@ The result: a person with visual impairment can ask *“What’s in front of me?
 ---
 
 ## Hardware Architecture
-```bash
-| Raspberry Pi 5 |
-| |
-USB Camera --->| USB 3.0 |
-| |
-9‑Axis IMU --->| I²C (SDA/SCL on GPIO2/GPIO3) +3.3V |
-| |
-USB Speaker --->| USB / 3.5mm Audio Jack |
-| |
-USB Mic --->| USB / I²S MEMS mic (optional) |
-+------------------+------------------------+
-|
-Ethernet / Wi‑Fi
-|
-+---------------+----------------+
-| PC running 3D Visualiser (UDP) |
-+--------------------------------+
-```
+
+                 +-------------------------------------------+
+                 |              Raspberry Pi 5               |
+                 |                                           |
+ USB Camera  --->| USB 3.0                                   |
+                 |                                           |
+ 9‑Axis IMU  --->| I²C (SDA/SCL on GPIO2/GPIO3)  +3.3V      |
+                 |                                           |
+ USB Speaker --->| USB / 3.5mm Audio Jack                    |
+                 |                                           |
+ USB Mic     --->| USB / I²S MEMS mic (optional)             |
+                 +------------------+------------------------+
+                                    |
+                              Ethernet / Wi‑Fi
+                                    |
+                    +---------------+----------------+
+                    | PC running 3D Visualiser (UDP) |
+                    +--------------------------------+
 
 **Bill of Materials (typical configuration):**
 
@@ -85,8 +85,6 @@ All other peripherals are plug‑and‑play over USB, keeping the wearable simpl
 ## Software Architecture
 
 The system is a **multi‑threaded real‑time pipeline** with controlled shared memory, designed for concurrency on a quad‑core Cortex‑A76.
-
-
                     +-----------+
                     |  Camera   |
                     +-----+-----+
@@ -114,7 +112,6 @@ The system is a **multi‑threaded real‑time pipeline** with controlled shared
                     |  TTS Thread|
                     | (pyttsx3)  |
                     +------------+
-
 
 All threads synchronised with `threading.Lock` and priority knobs for real‑time control of frame‑skipping under heavy load.
 
