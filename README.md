@@ -277,4 +277,3 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 ---
 
 *Engineered with ❤️ for a more accessible world.*
->>>>>>>>> Temporary merge branch 2
