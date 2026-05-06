@@ -45,18 +45,18 @@ The result: a person with visual impairment can ask *“What’s in front of me?
 
 ```mermaid
 flowchart TD
-    subgraph Person["👤 User (wearable)"]
+    subgraph Person["User (wearable)"]
         direction TB
         Camera["Head‑mounted camera<br/>(USB cable down to Pi)"]
         IMU["9‑axis IMU<br/>(on headband)"]
         Earbuds["Bluetooth earbuds<br/>(mic + speaker in ear)"]
     end
 
-    subgraph Pi["🧠 Raspberry Pi 5<br/>(belt / pocket)"]
+    subgraph Pi["Raspberry Pi 5<br/>(belt / pocket)"]
         Processing["Processing unit"]
     end
 
-    subgraph Debug["🖥️ Development PC"]
+    subgraph Debug["Development PC"]
         Visualiser["3D Visualiser<br/>(UDP)"]
     end
 
