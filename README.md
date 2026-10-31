@@ -2,7 +2,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205-red)]()
 [![Python](https://img.shields.io/badge/python-3.11-blue)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![License](https://img.shields.io/badge/license-all%20rights%20reserved-lightgrey)]()
 
 **A real-time, wearable assistive device that speaks the world around you.**  
 Fuses computer vision, 9‑axis IMU orientation tracking, and natural voice interaction on a **Raspberry Pi 5** edge device.  
@@ -37,7 +37,7 @@ A **six‑thread concurrent pipeline** running on a Raspberry Pi 5:
 5. Generates natural‑language scene descriptions
 6. Speaks them aloud via text‑to‑speech
 
-The result: a person with visual impairment can ask *“What’s in front of me?”* and receive an immediate spoken answer, describing the object and its position relative to where they are looking.
+The result: a person with visual impairment can say *“detect”* and receive an immediate spoken answer, describing the object and its position relative to where they are looking.
 
 ---
 
@@ -72,7 +72,7 @@ flowchart TD
 |-----------|-----------|-------|
 | Raspberry Pi 5 (4/8 GB) | – | Main processing unit |
 | USB Camera (e.g. Logitech C270) | USB 3.0 | 640×480 @ 30 fps |
-| 9‑axis IMU (BNO055 / MPU9250) | I²C | Accel, gyro, mag; used with Madgwick filter |
+| ICM‑20948 9‑axis IMU | I²C | Accelerometer + gyroscope feed the Madgwick filter (magnetometer not used yet) |
 | Bluetooth Earbuds | Bluetooth | For Combined microphone + speaker for voice & TTS |
 | Portable 5V power bank | USB‑C PD | 15 W+ recommended for stable operation |
 
@@ -92,7 +92,7 @@ The system is a **multi‑threaded real‑time pipeline** with controlled shared
 
 ```mermaid
 flowchart TD
-    Camera[Camera] -->|Frame queue, mutex| DetectionThread[Detection Thread<br/>YOLOv8 ONNX]
+    Camera[Camera] -->|Frame queue, mutex| DetectionThread[Detection Thread<br/>YOLO11 ONNX]
     Camera --> IMUThread[IMU Thread<br/>Madgwick + ZUPT]
     Camera --> VoiceThread[Voice Thread<br/>Vosk ASR]
     
@@ -118,17 +118,17 @@ Each subsystem has its own latency and throughput requirement. Decoupling them p
 
 ### 1. Head‑Orientation Tracking (IMU)
 
-- **Sensor:** 9‑axis IMU (accelerometer, gyroscope, magnetometer)
+- **Sensor:** ICM‑20948 IMU (accelerometer + gyroscope; magnetometer available but not used yet)
 - **Fusion:** Madgwick AHRS filter (gradient‑descent algorithm)
 - **Drift reduction:** Zero‑Velocity Update (ZUPT) logic — when the user stops moving, the system temporarily zeroes gyro bias
 - **Output:** Real‑time euler angles (yaw, pitch, roll), used to determine what the user is “looking at”
 
-This is **implemented from scratch in Python** using only `numpy`, not a black‑box library — demonstrating signal‑processing competence.
+The Madgwick update comes from the `ahrs` library; the calibration, world‑frame gravity removal, ZUPT logic and orientation‑to‑description mapping around it are my own NumPy code.
 
-### 2. Object Detection (YOLOv8 → ONNX)
+### 2. Object Detection (YOLO11 → ONNX)
 
-- The YOLOv8 model is exported to **ONNX** using `pytorch2onnx.py`
-- ONNX Runtime inference on the Pi 5’s CPU (with optional NNPACK acceleration)
+- The YOLO11n model is exported to **ONNX** using `pytorch2onnx.py`
+- The ONNX model runs on the Pi 5’s CPU through the Ultralytics runtime
 - Optimised for on‑device inference (no cloud dependency → privacy/offline)
 
 ### 3. Object Tracking (SORT)
@@ -140,7 +140,7 @@ This is **implemented from scratch in Python** using only `numpy`, not a black�
 ### 4. Voice Command Interface
 
 - **Wake‑word‑free continuous listening** using Vosk offline speech‑to‑text
-- Supports natural phrases: *“What’s in front of me?”, “Describe the room”, “Stop”*
+- Commands: *“detect”* (one‑off scan), *“start”* / *“stop”* (continuous mode), an object name such as *“chair”* (says where it is), *“exit”* (shuts down)
 - Handles audio overflow gracefully with `exception_on_overflow=False` to avoid thread crashes
 
 ### 5. Scene Description Logic
@@ -200,6 +200,14 @@ python3 pytorch2onnx.py
 
 (Requires the original PyTorch .pt file — place it in the project root or adjust the script.)
 
+### Download the Speech Model
+
+Download `vosk-model-small-en-us-0.15` from https://alphacephei.com/vosk/models and unzip it into the project folder.
+
+### Set the Visualiser Address
+
+Edit `PC_IP` in the `IMUTracker` class of `project_code.py` to your PC's IP address (only needed for `Motion.py`).
+
 ### Run the Main System
 
 ```bash
@@ -209,7 +217,7 @@ python3 project_code.py
 The system will:
 - Start the camera, IMU, microphone, and speaker
 - Begin real‑time object detection
-- Wait for a voice command like “What’s in front of me?”
+- Wait for a voice command such as “detect”
 
 
 ---
@@ -241,7 +249,7 @@ All benchmarks were recorded under realistic conditions with a moving user, not 
 
 | Decision | Rationale |
 |----------|-----------|
-| **ONNX Runtime** over PyTorch native | Lower overhead, better CPU optimisations on ARM |
+| **ONNX export** over PyTorch native | Lower overhead, better CPU optimisations on ARM |
 | **SORT tracker** instead of DeepSORT | Avoids large neural re‑ID models; keeps pipeline lightweight |
 | **Threading, not multiprocessing** | Reduced memory footprint on 4 GB Pi; Python GIL not a bottleneck with I/O‑bound tasks |
 | **ZUPT for IMU drift** | Elegant solution without needing magnetometer‑dependent calibration |
@@ -262,7 +270,7 @@ All benchmarks were recorded under realistic conditions with a moving user, not 
 
 ## Acknowledgements
 
-- YOLOv8 by Ultralytics  
+- YOLO11 by Ultralytics  
 - SORT algorithm (Bewley et al.)  
 - Vosk offline speech recognition  
 - Madgwick AHRS filter implementation  
@@ -272,7 +280,7 @@ All benchmarks were recorded under realistic conditions with a moving user, not 
 
 ## License
 
-It is a privte personal project
+This is a personal project. All rights reserved; please ask before reusing the code.
 
 ---
 
