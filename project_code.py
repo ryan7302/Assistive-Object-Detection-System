@@ -2,6 +2,8 @@
 Written by Paing Htet Kyaw -up2301555
 '''
 import sys
+import re
+import argparse
 import socket
 import cv2
 import os
@@ -70,7 +72,7 @@ class TTSEngine:
         self.engine.stop()
 
 class IMUTracker:
-    def __init__(self):
+    def __init__(self, pc_ip='192.168.33.178', port=9999):
         # IMU Initilization 
         self.imu = ICM20948()
         self.madgwick = Madgwick(frequency=100, beta=0.1)
@@ -93,8 +95,8 @@ class IMUTracker:
         self.GRAVITY = 9.81
         
         # Message to PC
-        self.PC_IP = '192.168.33.178' 
-        self.PORT = 9999 
+        self.PC_IP = pc_ip
+        self.PORT = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         # Threadlock and Flags 
@@ -239,7 +241,7 @@ class IMUTracker:
             orientation.append("pointing down")
             
         if abs(yaw) > 45:
-            orientation.append(f"rotated {abs(yaw):.0f}Â° {'left' if yaw > 0 else 'right'}")
+            orientation.append(f"rotated {abs(yaw):.0f} degrees {'left' if yaw > 0 else 'right'}")
             
         return "Camera is " + ("level" not in orientation and " ".join(orientation) or "level")
     
@@ -247,7 +249,8 @@ class IMUTracker:
         self.running = False
 
 class CameraFeed:
-    def __init__(self):        
+    def __init__(self, stop_event=None):
+        self.stop_event = stop_event
         self.cap = cv2.VideoCapture("/dev/video0", cv2.CAP_V4L2)  # USB camera
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -303,6 +306,8 @@ class CameraFeed:
             
         self.cap.release()
         cv2.destroyAllWindows()
+        if self.stop_event is not None:
+            self.stop_event.set()  # closing the window ('q') shuts the whole system down
     
     def get_frame(self):
         with self.frame_lock:
@@ -315,10 +320,10 @@ class CameraFeed:
         self.running = False
 
 class ObjectDetection:
-    def __init__(self, tts_engine, imu_tracker, camera_feed):
+    def __init__(self, tts_engine, imu_tracker, camera_feed, model_path="yolo11n.onnx"):
         #self.model = YOLO("yolo11n.pt")
         #self.model.export(format="onnx")
-        self.onnx_model = YOLO("yolo11n.onnx", task='detect')
+        self.onnx_model = YOLO(model_path, task='detect')
         self.tts_engine = tts_engine
         self.imu_tracker = imu_tracker # Camera Tracking
         self.img_tracker = Sort() #Object Tracking
@@ -390,7 +395,7 @@ class ObjectDetection:
         self.prev_time = now
 
         # Get camera motion estimate
-        camera_velocity = self.imu_tracker.velocity.copy()
+        camera_velocity = self.imu_tracker.get_pose()['velocity']  # read under the IMU lock
         camera_speed = np.linalg.norm(camera_velocity)
         camera_moving = camera_speed > 0.05
         avg_object_distance = 1.0 
@@ -573,7 +578,9 @@ class ObjectDetection:
             time.sleep(0.01)
 
 class VoiceCommand:
-    def __init__(self, camera_feed, object_detection, tts_engine, imu_tracker):
+    def __init__(self, camera_feed, object_detection, tts_engine, imu_tracker,
+                 stop_event, model_path="vosk-model-small-en-us-0.15"):
+        self.stop_event = stop_event
         self.camera = camera_feed
         self.imu_tracker = imu_tracker
         self.object_detection = object_detection            
@@ -581,7 +588,7 @@ class VoiceCommand:
         self.running = True
 
         # Vosk setup
-        self.model_path = "vosk-model-small-en-us-0.15"
+        self.model_path = model_path
         self.model = Model(self.model_path)
         self.recognizer = KaldiRecognizer(self.model, 16000)  # 16kHz sample rate
         self.pyaudio = pyaudio.PyAudio()
@@ -625,37 +632,37 @@ class VoiceCommand:
                 print(f"Error during speech recognition: {e}")
                 time.sleep(0.1)  # Prevent tight loop on errors
 
+    @staticmethod
+    def has_word(command, word):
+        """True if word (or phrase) appears as whole word(s), so 'stop' doesn't match 'stopwatch'."""
+        return re.search(r'\b' + re.escape(word) + r'\b', command) is not None
+
     def process_command(self, command):
         """Process recognized voice commands."""
-        if "start" in command:
+        if self.has_word(command, "start"):
             if not self.object_detection.detect_cont_mode:
                 self.object_detection.detect_cont_mode = True
                 self.tts_engine.say("Started continuous detection.")
 
-        elif "stop" in command:
+        elif self.has_word(command, "stop"):
             if self.object_detection.detect_cont_mode:
                 self.object_detection.detect_cont_mode = False
                 self.tts_engine.say("Stopped continuous detection.")
 
-        elif "detect" in command:
+        elif self.has_word(command, "detect"):
             if not self.object_detection.detect_cont_mode and not self.object_detection.detect_mode:
                 self.object_detection.detect_mode = True
 
-        elif any(obj in command for obj, _ in self.object_detection.detected_results):
+        elif any(self.has_word(command, obj) for obj, _ in self.object_detection.detected_results):
             for obj, location in self.object_detection.detected_results:
-                if obj in command:
+                if self.has_word(command, obj):
                     self.tts_engine.say(f"{obj} is at {location}.")
 
-        elif "exit" in command:
-            print("Exiting system. Cleaning up resources...")
+        elif self.has_word(command, "exit"):
+            # sys.exit() here would only end this thread, so signal main() to shut everything down
+            print("Exit command received.")
             self.tts_engine.say("Exiting system.")
-            self.object_detection.detect_cont_mode = False
-            self.object_detection.detect_mode = False
-            self.camera.stop_feed()
-            self.imu_tracker.stop_tracking()
-            self.tts_engine.stop()
-            self.stop()
-            sys.exit()
+            self.stop_event.set()
 
     def stop(self):
         """Clean up Vosk and PyAudio resources."""
@@ -666,44 +673,59 @@ class VoiceCommand:
         self.recognizer = None
         self.model = None
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Offline assistive object detection system")
+    parser.add_argument("--pc-ip", default="192.168.33.178", help="IP of the PC running Motion.py")
+    parser.add_argument("--port", type=int, default=9999, help="UDP port for the visualiser")
+    parser.add_argument("--yolo-model", default="yolo11n.onnx", help="Path to the YOLO ONNX model")
+    parser.add_argument("--vosk-model", default="vosk-model-small-en-us-0.15", help="Path to the Vosk model folder")
+    return parser.parse_args()
+
+def shutdown(tts_engine, imu_tracker, camera_feed, object_detection, voice_command):
+    """Stop every component once. Each step is guarded so one failure doesn't block the rest."""
+    print("Exiting system. Cleaning up resources...")
+    object_detection.detect_cont_mode = False
+    object_detection.detect_mode = False
+    time.sleep(1.0)  # give the TTS a moment to finish "Exiting system."
+    for step in (voice_command.stop, camera_feed.stop_feed, imu_tracker.stop_tracking, tts_engine.stop):
+        try:
+            step()
+        except Exception as e:
+            print(f"Cleanup error in {step.__qualname__}: {e}")
+
 def main():
+    """Main function to initialize and run the system."""
+    args = parse_args()
+    stop_event = threading.Event()
+
+    tts_engine = TTSEngine()
+    imu_tracker = IMUTracker(pc_ip=args.pc_ip, port=args.port)
+    camera_feed = CameraFeed(stop_event)
+    object_detection = ObjectDetection(tts_engine, imu_tracker, camera_feed, model_path=args.yolo_model)
+    voice_command = VoiceCommand(camera_feed, object_detection, tts_engine, imu_tracker,
+                                 stop_event, model_path=args.vosk_model)
+
+    # Start TTS worker thread
+    threading.Thread(target=tts_engine.worker, daemon=True).start()
+    # Start IMU tracking thread
+    imu_tracker.start_tracking()
+    # Start camera feed thread
+    camera_thread = threading.Thread(target=camera_feed.start_feed, daemon=True)
+    camera_thread.start()
+    # Start voice command listener
+    threading.Thread(target=voice_command.listen_and_respond, daemon=True).start()
+    # CPU monitoring thread
+    threading.Thread(target=monitor_cpu, args=(5,), daemon=True).start()
+
+    # Wait here until "exit" is said, 'e'/'q' is pressed, or Ctrl+C
     try:
-        """Main function to initialize and run the system."""    
-        tts_engine = TTSEngine()
-        imu_tracker = IMUTracker()
-        camera_feed = CameraFeed()
-        object_detection = ObjectDetection(tts_engine, imu_tracker, camera_feed) 
-        voice_command = VoiceCommand(camera_feed, object_detection, tts_engine,imu_tracker)
-
-        # Start TTS worker thread
-        tts_thread = threading.Thread(target=tts_engine.worker, daemon=True)
-        tts_thread.start()
-        # Start IMU tracking thread
-        imu_tracker.start_tracking()
-        
-        # Start camera feed thread
-        camera_thread = threading.Thread(target=camera_feed.start_feed)
-        camera_thread.start()
-
-        # Start voice command listener
-        voice_thread = threading.Thread(target=voice_command.listen_and_respond, daemon=True)
-        voice_thread.start()
-        
-        # CPU monitoring thread
-        monitor_thread = threading.Thread(target=monitor_cpu, args=(5,), daemon=True)
-        monitor_thread.start()
-            
+        while not stop_event.is_set():
+            stop_event.wait(0.5)
     except KeyboardInterrupt:
-        print("\nSystem Crash")
-        print("Exiting system. Cleaning up resources...")
-        object_detection.detect_cont_mode = False
-        object_detection.detect_mode = False
-        camera_feed.stop_feed()
-        imu_tracker.stop_tracking()
-        tts_engine.say("Exiting the system. Goodbye!")
-        tts_engine.stop()  # Signal the TTS engine to stop
-        voice_command.stop()
-        sys.exit()
+        print("\nCtrl+C received")
+    finally:
+        shutdown(tts_engine, imu_tracker, camera_feed, object_detection, voice_command)
+        camera_thread.join(timeout=2.0)
 
 if __name__ == "__main__":
     main()
